@@ -1,144 +1,222 @@
-import os, math, random, struct, zlib
+"""Abyssal Ascension: a deterministic, entirely procedural light painting."""
+import os
+import math
+import random
+import struct
+import zlib
 
-W=H=768
-pix=[0.0]*(W*H*3)
-def put(x,y,c,a=1.0):
-    if 0<=x<W and 0<=y<H:
-        i=(y*W+x)*3
-        pix[i]=min(1,pix[i]+c[0]*a); pix[i+1]=min(1,pix[i+1]+c[1]*a); pix[i+2]=min(1,pix[i+2]+c[2]*a)
-def glow(cx,cy,r,col,pow=2.0):
-    x0=max(0,int(cx-r)); x1=min(W-1,int(cx+r)); y0=max(0,int(cy-r)); y1=min(H-1,int(cy+r))
-    rr=1.0/r
-    for y in range(y0,y1+1):
-      dy=(y-cy)*rr
-      for x in range(x0,x1+1):
-        d=math.hypot((x-cx)*rr,dy)
-        if d<1: put(x,y,col,(1-d)**pow)
-def line(x0,y0,x1,y1,width,col,a=1):
-    r=width/2; xmin=max(0,int(min(x0,x1)-r)); xmax=min(W-1,int(max(x0,x1)+r)); ymin=max(0,int(min(y0,y1)-r)); ymax=min(H-1,int(max(y0,y1)+r))
-    dx=x1-x0; dy=y1-y0; den=dx*dx+dy*dy or 1
-    for y in range(ymin,ymax+1):
-      for x in range(xmin,xmax+1):
-        t=max(0,min(1,((x-x0)*dx+(y-y0)*dy)/den)); d=math.hypot(x-(x0+t*dx),y-(y0+t*dy))
-        if d<r: put(x,y,col,a*(1-d/r)**1.5)
-def ellipse(cx,cy,rx,ry,col):
-    for y in range(max(0,int(cy-ry)),min(H,int(cy+ry+1))):
-      for x in range(max(0,int(cx-rx)),min(W,int(cx+rx+1))):
-        q=((x-cx)/rx)**2+((y-cy)/ry)**2
-        if q<1:
-          edge=(1-q)**.18; put(x,y,col,edge)
+S = 640
+SIZE = 896
+rng = random.Random(20261116)
+pixels = [0.0] * (S * S * 3)
 
-# deep indigo space with layered nebula
-for y in range(H):
-  for x in range(W):
-    n=(math.sin(x*.018+math.sin(y*.011)*2)+math.sin(y*.025+x*.004)+math.sin((x+y)*.009))*.5
-    t=y/H
-    put(x,y,(.008+.018*(1-t)+.012*max(0,n), .012+.018*(1-t)+.008*max(0,n), .045+.065*(1-t)+.025*max(0,n)))
-rng=random.Random(20261116)
-for i in range(240):
-  x=rng.randrange(W); y=rng.randrange(H); s=rng.choice([1,1,1,2]); glow(x,y,s*2,(.2,.45,1),1.5); put(x,y,(.6,.8,1),.45)
 
-# Broken horizontal glints form a quiet sea beneath the ascending animal.
-for k in range(420):
-  depth=rng.random(); y=548+depth*219
-  center=405-45*depth; spread=22+95*depth
-  x=center+rng.gauss(0,spread)
-  strength=(.035+.09*(1-depth))*rng.random()
-  col=(1,.31,.065) if rng.random()<.48 else (.035,.65,.85)
-  half=rng.uniform(1,9)*(0.5+depth)
-  line(x-half,y,x+half,y,rng.uniform(.8,2.1),col,strength)
-for k in range(100):
-  y=rng.uniform(555,767); x=rng.uniform(25,740)
-  line(x,y,x+rng.uniform(5,36),y,1.2,(.025,.13,.23),.22)
+def add(x, y, color, strength=1.0):
+    if 0 <= x < S and 0 <= y < S:
+        k = (y * S + x) * 3
+        for c in range(3):
+            pixels[k + c] += color[c] * strength
 
-# Rising motes follow the curved wake and continue ahead of the crown.
-for i in range(260):
-  t=rng.random(); x=245+335*t+math.sin(i*2.3)*95; y=700-570*t+rng.random()*65
-  glow(x,y,rng.uniform(1.3,5),(0.05,.8,1) if i%4 else (1,.42,.09),2.2)
 
-# tentacles behind dome, diagonal streaming
-for j in range(15):
-  phase=j*.63; x0=255+j*25; y0=355-(x0-430)*.385; prev=(x0,y0)
-  for k in range(1,66):
-    u=k/65; x=x0-205*u+55*math.sin(u*4+phase*.35)*u+24*math.sin(u*9+phase)*u*u; y=y0+270*u+32*math.sin(u*4+phase)*u
-    line(prev[0],prev[1],x,y,10,(.02,.55,.75),.22); line(prev[0],prev[1],x,y,3,(.1,.95,1),.7); prev=(x,y)
-  glow(prev[0],prev[1],8,(.2,1,1),2)
+def glow(x, y, radius, color, strength=1.0):
+    for yy in range(max(0, int(y-radius)), min(S, int(y+radius)+1)):
+        for xx in range(max(0, int(x-radius)), min(S, int(x+radius)+1)):
+            d = ((xx-x)**2 + (yy-y)**2) / (radius*radius)
+            if d < 1:
+                add(xx, yy, color, strength * (1-d)**3)
 
-# Broad translucent feeding ribbons wind amongst the fine blue threads.
-for j in range(5):
-  x0=325+j*47; y0=355-(x0-430)*.385; prev=(x0,y0)
-  for k in range(1,61):
-    t=k/60; x=x0-185*t+43*math.sin(t*5+j*.4)*t+13*math.sin(t*13+j)*t; y=y0+240*t
-    col=(.65*(1-t)+.05,.22+.4*t,.12+.6*t)
-    line(*prev,x,y,17*(1-t)+3,col,.24)
-    line(*prev,x,y,4*(1-t)+1,(1-t,.52,.35+.6*t),.7)
-    prev=(x,y)
 
-# A tilted bell: uneven inner radiance, organic rim folds, and a warm halo.
-glow(430,290,270,(.32,.075,.012),2.0)
-glow(430,300,250,(0,.12,.20),2.2)
-for y in range(110,455):
-  for x in range(190,670):
-    dx=x-430; dy=y-330; u=.933*dx-.36*dy; v=.36*dx+.933*dy
-    if abs(u)>=205: continue
-    roof=-145*math.sqrt(1-(u/205)**2)
-    lip=25+8*math.cos(u*.12)
-    if roof<v<lip:
-      h=(v-roof)/(lip-roof); core=math.exp(-((u/90)**2+((v+65)/65)**2))
-      angle=math.atan2(u,150-v)
-      band=math.sin(angle*17+1.7*math.sin(angle*5)+v*.012)
-      rib=.5+.5*band
-      # Discontinuous curved folds collect in the lower translucent skirt.
-      fold=math.exp(-((v-(8-19*(u/205)**2+5*math.sin(u*.035)))/3.5)**2)
-      fold+=.55*math.exp(-((v-(-9-24*(u/205)**2+4*math.sin(u*.05+1)))/4)**2)
-      fold*=.45+.55*math.sin(u*.027+1)**2
-      warmth=max(0,1-h)*.06
-      edge=math.exp(-((v-roof)/3)**2)
-      c=(.43+.57*core+.022*rib+warmth-.10*fold, .065+.86*core+.018*rib-.035*fold, .025+.65*core+.012*rib-.012*fold)
-      i=(y*W+x)*3
-      pix[i:i+3]=[min(1,c[0]+edge*.05),min(1,c[1]+edge*.65),min(1,c[2]+edge*.9)]
-for k in range(181):
-  a=math.pi+k*math.pi/180; u=205*math.cos(a); v=145*math.sin(a)
-  x=430+.933*u+.36*v; y=330-.36*u+.933*v
-  glow(x,y,6,(.015,.45,.65),2)
-for k in range(161):
-  u=-200+400*k/160; v=25+8*math.cos(u*.12)
-  x=430+.933*u+.36*v; y=330-.36*u+.933*v
-  glow(x,y,5,(.06,.7,.85),2)
-glow(416,273,40,(.45,.33,.17),2)
-# sparks around crown
-for i in range(90):
-  a=rng.random()*math.tau; rr=rng.uniform(130,245); x=430+math.cos(a)*rr; y=320+math.sin(a)*rr*.65
-  glow(x,y,rng.uniform(1,5),(1,.35,.08),2.4)
+def stroke(a, b, width, color, strength=1.0):
+    ax, ay = a
+    bx, by = b
+    dx, dy = bx-ax, by-ay
+    den = dx*dx + dy*dy or 1
+    radius = width/2 + 0.7
+    for y in range(max(0, int(min(ay, by)-radius)), min(S, int(max(ay, by)+radius)+1)):
+        for x in range(max(0, int(min(ax, bx)-radius)), min(S, int(max(ax, bx)+radius)+1)):
+            t = max(0, min(1, ((x-ax)*dx + (y-ay)*dy)/den))
+            d = math.hypot(x-ax-t*dx, y-ay-t*dy)
+            a = min(1, max(0, radius-d))
+            if a:
+                add(x, y, color, strength*a)
 
-# A small inward-set boat with one warm lantern and a broken reflection.
-for y in range(675,694):
-  t=(y-675)/19
-  left=111+14*t; right=211-19*t
-  for x in range(int(left),int(right)+1):
-    i=(y*W+x)*3; pix[i:i+3]=[.002,.003,.008]
-line(114,675,208,675,2,(.13,.075,.035),.5)
-line(158,675,158,641,3,(.008,.009,.014),1)
-line(158,641,178,656,2,(.008,.009,.014),1)
-glow(158,641,21,(1,.38,.08),2.3)
-glow(158,641,4,(1,.85,.35),1)
-for k in range(43):
-  y=697+k*1.55; x=158+math.sin(k*2.1)*7; r=2+k*.20
-  line(x-r,y,x+r,y,1.5,(.7,.25,.035),.32*(1-k/43))
 
-def png(path):
-  side=896
-  raw=bytearray()
-  for y in range(side):
-    raw.append(0)
-    sy=y*(H-1)/(side-1); iy=int(sy); fy=sy-iy; ny=min(H-1,iy+1)
-    for x in range(side):
-      sx=x*(W-1)/(side-1); ix=int(sx); fx=sx-ix; nx=min(W-1,ix+1)
-      a=(iy*W+ix)*3; b=(iy*W+nx)*3; c=(ny*W+ix)*3; d=(ny*W+nx)*3
-      for channel in range(3):
-        v=(pix[a+channel]*(1-fx)+pix[b+channel]*fx)*(1-fy)+(pix[c+channel]*(1-fx)+pix[d+channel]*fx)*fy
-        raw.append(int(max(0,min(255,v**.82*255))))
-  def ch(t,d): return struct.pack('>I',len(d))+t+d+struct.pack('>I',zlib.crc32(t+d)&0xffffffff)
-  with open(path,'wb') as f:
-    f.write(b'\x89PNG\r\n\x1a\n'); f.write(ch(b'IHDR',struct.pack('>IIBBBBB',side,side,8,2,0,0,0))); f.write(ch(b'IDAT',zlib.compress(bytes(raw),9))); f.write(ch(b'IEND',b''))
-out=os.environ.get('MAKEFUN_OUTPUT_DIR','/output'); os.makedirs(out,exist_ok=True); png(os.path.join(out,'entry.png'))
+def curve(points, width, color, strength=1.0):
+    for a, b in zip(points, points[1:]):
+        stroke(a, b, width, color, strength)
+
+
+def polygon(points, color):
+    for y in range(max(0, int(min(p[1] for p in points))), min(S, int(max(p[1] for p in points))+1)):
+        hits = []
+        for a, b in zip(points, points[1:]+points[:1]):
+            if (a[1] <= y < b[1]) or (b[1] <= y < a[1]):
+                hits.append(a[0]+(y-a[1])*(b[0]-a[0])/(b[1]-a[1]))
+        hits.sort()
+        for a, b in zip(hits[::2], hits[1::2]):
+            for x in range(max(0, int(a)), min(S, int(b)+1)):
+                k = (y*S+x)*3
+                pixels[k:k+3] = color
+
+
+# Sea and sky share a continuous midnight volume.
+for y in range(S):
+    for x in range(S):
+        mist = (math.sin(x*.012+y*.009)+math.sin(x*.006-y*.019)+2)/4
+        cloud = math.exp(-((x-330-y*.15)/230)**2) * mist**3
+        k = (y*S+x)*3
+        pixels[k:k+3] = [.004+cloud*.009, .009+cloud*.021, .027+cloud*.052]
+for _ in range(510):
+    x, y = rng.uniform(10, 630), rng.uniform(8, 470)
+    r = rng.choice([.65, .8, 1.1, 1.6])
+    glow(x, y, r+1, (.25, .48, .65), rng.uniform(.2, .9))
+
+# Tilted coordinates: the crown surges up and right.
+def world(u, v):
+    return (374 + .91*u - .415*v, 245 + .415*u + .91*v)
+
+orange = (1.0, .21, .035)
+cyan = (.045, .72, .95)
+glow(397, 200, 220, orange, .20)
+glow(417, 173, 140, (1, .38, .08), .13)
+
+# Distant water glints and a broken reflected pillar.
+for _ in range(1650):
+    y = rng.uniform(452, 640)
+    center = 310 - (y-452)*.21
+    x = rng.gauss(center, 24+(y-452)*.39)
+    f = math.exp(-((x-center)/(35+(y-452)*.43))**2)
+    color = cyan if rng.random() < .38 else (1, .30, .075)
+    stroke((x,y), (x+rng.uniform(1,10)*(y/640),y), .5, color, rng.uniform(.025,.16)*f)
+for _ in range(190):
+    x,y = rng.uniform(0,640),rng.uniform(480,640)
+    stroke((x,y),(x+rng.uniform(2,12),y),.5,(.035,.16,.22),.22)
+
+# Feeding ribbons, translucent and gently folding in the current.
+for n in range(7):
+    u0 = -123+n*40
+    phase = rng.uniform(0,6)
+    points=[]
+    for j in range(91):
+        t=j/90
+        u=u0-100*t+20*math.sin(t*8+phase)*t
+        v=17+310*t
+        points.append(world(u,v))
+    curve(points, 13, (.08,.20,.23), .12)
+    curve(points, 5, (.18,.53,.53), .11)
+    curve(points, 1, (.55,.64,.43), .25)
+
+# Fine living filaments stream behind the ascent.
+for n in range(43):
+    u0=rng.uniform(-151,151)
+    length=rng.uniform(210,390)*(1-.15*abs(u0)/151)
+    phase=rng.uniform(0,6.28)
+    points=[]
+    for j in range(105):
+        t=j/104
+        u=u0-118*t+math.sin(t*8+phase)*(7+20*t)+12*math.sin(t*17+phase)*t*t
+        v=18+length*t
+        points.append(world(u,v))
+    col = cyan if n%3 else (1,.39,.12)
+    curve(points, 5, col, .035)
+    curve(points, .85, col, rng.uniform(.32,.66))
+    if n%4==0:
+        for j in range(10,100,9):
+            x,y=points[j]
+            glow(x,y,2.2,(.30,.95,1),.7)
+
+# A volumetric bell: irregular molten tissue inside a clean dome contour.
+for y in range(55,360):
+    for x in range(188,586):
+        dx,dy=x-374,y-245
+        u=.91*dx+.415*dy
+        v=-.415*dx+.91*dy
+        q=u/170
+        if abs(q)>=1:
+            continue
+        top=-139*math.sqrt(1-q*q)
+        bottom=15+20*(1-q*q)
+        if top <= v <= bottom:
+            edge=min(v-top,bottom-v, (170-abs(u))*.8)
+            a=min(1,edge/1.8)
+            core=math.exp(-((u-15)/88)**2-((v+55)/64)**2)
+            tissue=(math.sin(u*.038+v*.041+1.4*math.sin(u*.018)) + math.sin(v*.071-u*.013))/2
+            rim=math.exp(-((v-bottom+12)/8)**2)
+            dark=.11*math.exp(-((v-top-17-5*math.sin(u*.05))/3)**2)
+            c=(.77+.48*core+.055*tissue-dark, .15+.68*core+.035*tissue-rim*.07, .025+.36*core)
+            k=(y*S+x)*3
+            for ch in range(3):
+                pixels[k+ch]=pixels[k+ch]*(1-a)+c[ch]*a
+
+# Scalloped cyan lip and luminous crown edge.
+edge=[]
+for j in range(181):
+    u=-170+340*j/180
+    v=15+20*(1-(u/170)**2)+1.4*math.sin(u*.24)
+    edge.append(world(u,v))
+curve(edge,9,cyan,.10)
+curve(edge,2.0,(.13,.94,1),.85)
+curve(edge,.65,(.71,1,1),.55)
+arch=[world(170*math.cos(t),-139*math.sin(t)) for t in [j*math.pi/160 for j in range(161)]]
+curve(arch,6,(1,.36,.06),.11)
+curve(arch,1.2,(1,.70,.27),.5)
+
+# Sparse glowing flecks trace the immense animal's wake.
+for _ in range(260):
+    u=rng.uniform(-215,220)
+    v=rng.uniform(-185,390)
+    x,y=world(u-0.22*max(v,0),v)
+    if 15<x<625 and 10<y<620:
+        color = (1,.57,.18) if rng.random()<.5 else (.12,.78,.91)
+        glow(x,y,rng.uniform(1,3.4),color,rng.uniform(.25,.9))
+for _ in range(25):
+    x,y=world(rng.uniform(-90,130),rng.uniform(-205,-150))
+    stroke((x,y),(x+2,y-5),.7,(1,.65,.25),.5)
+
+# Tiny fishing boat, readable against the illuminated water.
+glow(94,554,22,(1,.40,.08),.18)
+polygon([(69,558),(116,558),(107,567),(80,567)],(.002,.004,.009))
+polygon([(85,548),(103,548),(107,558),(82,558)],(.003,.006,.012))
+stroke((96,523),(96,557),1.4,(.004,.008,.014))
+stroke((76,540),(108,540),1,(.005,.01,.016))
+stroke((96,524),(109,548),.6,(.025,.04,.05))
+glow(106,550,7,(1,.44,.09),.85)
+glow(106,550,2.1,(1,.90,.49),1.6)
+for j in range(13):
+    y=572+j*3
+    x=105+rng.uniform(-5,4)
+    stroke((x-2-j*.2,y),(x+2+j*.2,y),.6,(1,.44,.10),.15*(1-j/15))
+
+
+def png_bytes():
+    # Bilinear reconstruction and a restrained filmic shoulder.
+    lut = [int(255*min(1, max(0, (i/4096)/(1+i/4096*.30)))**.78+.5) for i in range(16385)]
+    raw=bytearray()
+    for y in range(SIZE):
+        raw.append(0)
+        fy=y*(S-1)/(SIZE-1)
+        iy=int(fy)
+        ty=fy-iy
+        jy=min(S-1,iy+1)
+        for x in range(SIZE):
+            fx=x*(S-1)/(SIZE-1)
+            ix=int(fx)
+            tx=fx-ix
+            jx=min(S-1,ix+1)
+            a=(iy*S+ix)*3
+            b=(iy*S+jx)*3
+            c=(jy*S+ix)*3
+            d=(jy*S+jx)*3
+            for ch in range(3):
+                value=(pixels[a+ch]*(1-tx)+pixels[b+ch]*tx)*(1-ty)+(pixels[c+ch]*(1-tx)+pixels[d+ch]*tx)*ty
+                raw.append(lut[min(16384,max(0,int(value*4096)))])
+    def chunk(kind,data):
+        return struct.pack('>I',len(data))+kind+data+struct.pack('>I',zlib.crc32(kind+data)&0xffffffff)
+    return b'\x89PNG\r\n\x1a\n'+chunk(b'IHDR',struct.pack('>IIBBBBB',SIZE,SIZE,8,2,0,0,0))+chunk(b'IDAT',zlib.compress(raw,9))+chunk(b'IEND',b'')
+
+
+if __name__ == '__main__':
+    output=os.environ.get('MAKEFUN_OUTPUT_DIR','/output')
+    os.makedirs(output,exist_ok=True)
+    with open(os.path.join(output,'entry.png'),'wb') as handle:
+        handle.write(png_bytes())
